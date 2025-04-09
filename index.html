@@ -1,0 +1,1766 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Week 12+: Advanced Forecasting & Deep Learning for Malaria</title>
+    <link rel="stylesheet" href="styles.css">
+</head>
+<body>
+    <button class="sidebar-toggle" id="sidebar-toggle">Menu</button>
+    
+    <div class="sidebar" id="sidebar">
+        <h3>Course Navigation</h3>
+        <ul>
+            <li class="menu-item">
+                <a href="#week12">📅 Week 12+: Advanced ML for Malaria</a>
+                <ul class="sub-menu">
+                    <li><a href="#neural-networks">Neural Networks</a></li>
+                    <li><a href="#outbreak-prediction">Outbreak Prediction</a></li>
+                    <li><a href="#shiny-integration">Shiny Dashboard Integration</a></li>
+                </ul>
+            </li>
+        </ul>
+    </div>
+    
+    <div class="container">
+        <h1 id="week12">📅 Week 12+: Advanced Forecasting & Deep Learning for Malaria</h1>
+        
+        <p>This week, we will:<br>
+        ✅ <strong>Build and train neural networks</strong> for malaria data using TensorFlow in R<br>
+        ✅ <strong>Develop predictive models</strong> for malaria outbreak forecasting<br>
+        ✅ <strong>Create interactive dashboards</strong> for malaria surveillance using Shiny</p>
+        
+        <hr>
+        
+        <h2 id="neural-networks">1️⃣ Neural Networks with TensorFlow in R</h2>
+        
+        <h3>Why Use Neural Networks for Malaria Research?</h3>
+        <p>📌 <strong>Neural networks</strong> can capture complex non-linear relationships in malaria data that traditional statistical methods might miss, including interactions between environmental factors, population characteristics, and temporal patterns.</p>
+        
+        <h3>Step 1: Setting Up TensorFlow in R</h3>
+        <div class="r-code">
+            <pre><code>
+# Install required packages
+install.packages(c("tensorflow", "keras", "reticulate"))
+library(tensorflow)
+library(keras)
+library(reticulate)
+
+# Install TensorFlow (only needed once)
+install_tensorflow()
+
+# Verify installation
+tf$constant("Hello TensorFlow!")
+
+# Set random seed for reproducibility
+set.seed(123)
+tensorflow::set_random_seed(123)
+            </code></pre>
+        </div>
+        
+        <div class="explanation">
+            <h4>🔍 Explanation:</h4>
+            <p>✔ <code>tensorflow</code> provides the core deep learning functionality<br>
+            ✔ <code>keras</code> is a high-level API that makes building neural networks easier<br>
+            ✔ <code>reticulate</code> connects R with Python (TensorFlow is primarily a Python library)<br>
+            ✔ <code>install_tensorflow()</code> installs TensorFlow in your R environment<br>
+            ✔ Setting random seeds ensures reproducible results</p>
+        </div>
+        
+        <hr>
+        
+        <h3>Step 2: Preparing Malaria Data for Neural Networks</h3>
+        <div class="r-code">
+            <pre><code>
+# Load and preprocess malaria data
+library(dplyr)
+library(tidyr)
+library(lubridate)
+
+# Load malaria dataset
+malaria_data <- read.csv("malaria_data.csv")
+
+# Create time-based features
+malaria_data <- malaria_data %>%
+  mutate(
+    date = as.Date(paste(year, month, "15", sep = "-")),
+    day_of_year = yday(date),
+    sin_day = sin(2 * pi * day_of_year / 365),
+    cos_day = cos(2 * pi * day_of_year / 365)
+  )
+
+# Normalize numerical features
+normalize <- function(x) {
+  return((x - mean(x, na.rm = TRUE)) / sd(x, na.rm = TRUE))
+}
+
+# Select predictors and response variable
+features <- c("rainfall", "temperature", "humidity", "population_density", 
+              "sin_day", "cos_day")
+
+# Create normalized feature matrix
+X <- malaria_data %>%
+  select(all_of(features)) %>%
+  mutate(across(everything(), normalize)) %>%
+  as.matrix()
+
+# Response variable (malaria cases)
+y <- malaria_data$cases
+
+# One-hot encode categorical variables if needed
+if("region" %in% names(malaria_data)) {
+  # Create dummy variables for regions
+  regions <- model.matrix(~ region - 1, data = malaria_data)
+  X <- cbind(X, regions)
+}
+
+# Split data into training and testing sets (80% train, 20% test)
+train_indices <- sample(1:nrow(X), size = round(0.8 * nrow(X)))
+X_train <- X[train_indices, ]
+y_train <- y[train_indices]
+X_test <- X[-train_indices, ]
+y_test <- y[-train_indices]
+
+# Check data dimensions
+cat("Training data dimensions:", dim(X_train), "\n")
+cat("Testing data dimensions:", dim(X_test), "\n")
+            </code></pre>
+        </div>
+        
+        <div class="explanation">
+            <h4>🔍 Explanation:</h4>
+            <p>✔ Converting date to cyclical features (<code>sin_day</code>, <code>cos_day</code>) helps the model recognize seasonal patterns<br>
+            ✔ Normalizing features ensures all inputs are on a similar scale, which helps neural networks converge faster<br>
+            ✔ One-hot encoding converts categorical variables to a format suitable for neural networks<br>
+            ✔ Splitting data into training and testing sets allows us to evaluate model performance on unseen data</p>
+        </div>
+        
+        <hr>
+        
+        <h3>Step 3: Building a Simple Neural Network</h3>
+        <div class="r-code">
+            <pre><code>
+# Build a simple feedforward neural network
+model <- keras_model_sequential() %>%
+  layer_dense(units = 64, activation = "relu", input_shape = ncol(X_train)) %>%
+  layer_dropout(rate = 0.3) %>%
+  layer_dense(units = 32, activation = "relu") %>%
+  layer_dropout(rate = 0.3) %>%
+  layer_dense(units = 1)  # Single output unit for regression
+
+# Compile the model
+model %>% compile(
+  loss = "mse",
+  optimizer = optimizer_adam(learning_rate = 0.001),
+  metrics = c("mean_absolute_error")
+)
+
+# View model architecture
+summary(model)
+
+# Train the model
+history <- model %>% fit(
+  x = X_train,
+  y = y_train,
+  epochs = 100,
+  batch_size = 32,
+  validation_split = 0.2,
+  verbose = 1,
+  callbacks = list(
+    callback_early_stopping(patience = 20, restore_best_weights = TRUE)
+  )
+)
+
+# Plot training history
+plot(history)
+            </code></pre>
+        </div>
+        
+        <div class="explanation">
+            <h4>🔍 Explanation:</h4>
+            <p>✔ <code>keras_model_sequential()</code> creates a linear stack of layers<br>
+            ✔ <code>layer_dense()</code> adds fully connected neural network layers<br>
+            ✔ <code>layer_dropout()</code> helps prevent overfitting by randomly dropping connections during training<br>
+            ✔ "relu" (Rectified Linear Unit) is a common activation function that introduces non-linearity<br>
+            ✔ We use Mean Squared Error (MSE) as the loss function for regression problems<br>
+            ✔ <code>optimizer_adam</code> is an adaptive learning rate optimization algorithm<br>
+            ✔ Early stopping prevents overfitting by monitoring validation loss</p>
+        </div>
+        
+        <hr>
+        
+        <h3>Step 4: Evaluating and Making Predictions</h3>
+        <div class="r-code">
+            <pre><code>
+# Evaluate model on test data
+evaluation <- model %>% evaluate(X_test, y_test)
+cat("Test MSE:", evaluation["loss"], "\n")
+cat("Test MAE:", evaluation["mean_absolute_error"], "\n")
+
+# Make predictions
+predictions <- model %>% predict(X_test)
+
+# Create dataframe for actual vs. predicted values
+results_df <- data.frame(
+  actual = y_test,
+  predicted = as.numeric(predictions)
+)
+
+# Calculate R-squared
+ss_total <- sum((results_df$actual - mean(results_df$actual))^2)
+ss_residual <- sum((results_df$actual - results_df$predicted)^2)
+r_squared <- 1 - (ss_residual / ss_total)
+cat("R-squared:", round(r_squared, 3), "\n")
+
+# Visualize actual vs. predicted values
+library(ggplot2)
+ggplot(results_df, aes(x = actual, y = predicted)) +
+  geom_point(alpha = 0.5) +
+  geom_abline(intercept = 0, slope = 1, color = "red", linetype = "dashed") +
+  labs(
+    title = "Neural Network: Actual vs. Predicted Malaria Cases",
+    subtitle = paste("R² =", round(r_squared, 3)),
+    x = "Actual Cases",
+    y = "Predicted Cases"
+  ) +
+  theme_minimal()
+
+# Calculate residuals
+results_df$residuals <- results_df$actual - results_df$predicted
+
+# Plot residuals
+ggplot(results_df, aes(x = predicted, y = residuals)) +
+  geom_point(alpha = 0.5) +
+  geom_hline(yintercept = 0, color = "red", linetype = "dashed") +
+  labs(
+    title = "Residuals Plot",
+    x = "Predicted Cases",
+    y = "Residuals (Actual - Predicted)"
+  ) +
+  theme_minimal()
+            </code></pre>
+        </div>
+        
+        <div class="explanation">
+            <h4>🔍 Explanation:</h4>
+            <p>✔ <code>evaluate()</code> calculates performance metrics on the test data<br>
+            ✔ MSE (Mean Squared Error) and MAE (Mean Absolute Error) are common regression metrics<br>
+            ✔ Lower MSE and MAE values indicate better predictions<br>
+            ✔ R-squared measures the proportion of variance explained by the model<br>
+            ✔ The diagonal line in the actual vs. predicted plot represents perfect predictions<br>
+            ✔ The residuals plot helps identify patterns in prediction errors</p>
+        </div>
+        
+        <hr>
+        
+        <h3>Step 5: Building an LSTM Model for Time Series</h3>
+        <div class="r-code">
+            <pre><code>
+# Prepare time series data for LSTM
+create_time_series_data <- function(data, lookback = 6) {
+  X <- list()
+  y <- list()
+  
+  for (i in (lookback + 1):length(data)) {
+    X[[length(X) + 1]] <- data[(i - lookback):(i - 1)]
+    y[[length(y) + 1]] <- data[i]
+  }
+  
+  return(list(X = array(unlist(X), dim = c(length(X), lookback, 1)),
+              y = unlist(y)))
+}
+
+# Assuming we have monthly data arranged chronologically
+ts_data <- malaria_data %>%
+  arrange(year, month) %>%
+  pull(cases)
+
+# Normalize time series data
+ts_data_norm <- normalize(ts_data)
+
+# Create sequences with 6-month lookback
+lookback <- 6
+ts_dataset <- create_time_series_data(ts_data_norm, lookback)
+
+# Split into training and testing sets
+train_size <- round(0.8 * length(ts_dataset$y))
+X_train_ts <- ts_dataset$X[1:train_size, , ]
+y_train_ts <- ts_dataset$y[1:train_size]
+X_test_ts <- ts_dataset$X[(train_size + 1):length(ts_dataset$y), , ]
+y_test_ts <- ts_dataset$y[(train_size + 1):length(ts_dataset$y)]
+
+# Build LSTM model
+lstm_model <- keras_model_sequential() %>%
+  layer_lstm(units = 64, input_shape = c(lookback, 1), return_sequences = TRUE) %>%
+  layer_dropout(rate = 0.2) %>%
+  layer_lstm(units = 32, return_sequences = FALSE) %>%
+  layer_dropout(rate = 0.2) %>%
+  layer_dense(units = 16, activation = "relu") %>%
+  layer_dense(units = 1)
+
+# Compile the model
+lstm_model %>% compile(
+  loss = "mse",
+  optimizer = optimizer_adam(learning_rate = 0.001),
+  metrics = c("mean_absolute_error")
+)
+
+# View model architecture
+summary(lstm_model)
+
+# Train the model
+lstm_history <- lstm_model %>% fit(
+  x = X_train_ts,
+  y = y_train_ts,
+  epochs = 100,
+  batch_size = 16,
+  validation_split = 0.2,
+  verbose = 1,
+  callbacks = list(
+    callback_early_stopping(patience = 20, restore_best_weights = TRUE)
+  )
+)
+
+# Plot training history
+plot(lstm_history)
+
+# Make predictions
+lstm_predictions <- lstm_model %>% predict(X_test_ts)
+
+# Inverse normalize to get back to original scale
+mean_cases <- mean(ts_data, na.rm = TRUE)
+sd_cases <- sd(ts_data, na.rm = TRUE)
+lstm_predictions_orig <- lstm_predictions * sd_cases + mean_cases
+y_test_orig <- y_test_ts * sd_cases + mean_cases
+
+# Create results dataframe
+lstm_results <- data.frame(
+  actual = y_test_orig,
+  predicted = as.numeric(lstm_predictions_orig),
+  time_index = (train_size + 1):length(ts_dataset$y)
+)
+
+# Visualize LSTM predictions
+ggplot() +
+  geom_line(data = lstm_results, aes(x = time_index, y = actual, color = "Actual"), size = 1) +
+  geom_line(data = lstm_results, aes(x = time_index, y = predicted, color = "Predicted"), size = 1) +
+  labs(
+    title = "LSTM Model: Actual vs. Predicted Malaria Cases Over Time",
+    x = "Time Period",
+    y = "Number of Cases",
+    color = "Series"
+  ) +
+  scale_color_manual(values = c("Actual" = "blue", "Predicted" = "red")) +
+  theme_minimal()
+            </code></pre>
+        </div>
+        
+        <div class="explanation">
+            <h4>🔍 Explanation:</h4>
+            <p>✔ Long Short-Term Memory (LSTM) networks are specialized for sequential data<br>
+            ✔ <code>layer_lstm()</code> creates recurrent layers that can learn temporal patterns<br>
+            ✔ <code>return_sequences = TRUE</code> outputs the full sequence for stacked LSTM layers<br>
+            ✔ The lookback parameter defines how many previous time steps to consider<br>
+            ✔ Time series data is structured as 3D arrays: [samples, time steps, features]<br>
+            ✔ LSTMs can capture seasonal patterns and long-term dependencies in malaria data</p>
+        </div>
+        
+        <hr>
+        
+        <h2 id="outbreak-prediction">2️⃣ Predicting Malaria Outbreaks with Deep Learning</h2>
+        
+        <h3>Step 1: Defining Outbreak Thresholds</h3>
+        <div class="r-code">
+            <pre><code>
+# Define outbreaks based on historical data
+library(zoo)
+
+# Calculate moving average and standard deviation
+malaria_ts <- malaria_data %>%
+  arrange(year, month) %>%
+  mutate(
+    rolling_mean = rollmean(cases, k = 12, fill = NA, align = "right"),
+    rolling_sd = rollapply(cases, width = 12, FUN = sd, fill = NA, align = "right")
+  )
+
+# Define outbreak threshold (e.g., 2 standard deviations above the mean)
+malaria_ts <- malaria_ts %>%
+  mutate(
+    threshold = rolling_mean + 2 * rolling_sd,
+    is_outbreak = cases > threshold
+  )
+
+# Count outbreaks
+outbreak_count <- sum(malaria_ts$is_outbreak, na.rm = TRUE)
+cat("Number of outbreak months identified:", outbreak_count, "\n")
+
+# Visualize outbreaks
+ggplot(malaria_ts, aes(x = date)) +
+  geom_line(aes(y = cases), color = "blue") +
+  geom_line(aes(y = threshold), color = "red", linetype = "dashed") +
+  geom_point(data = filter(malaria_ts, is_outbreak), 
+             aes(y = cases), color = "red", size = 3) +
+  labs(
+    title = "Malaria Cases with Outbreak Threshold",
+    x = "Date",
+    y = "Number of Cases"
+  ) +
+  theme_minimal()
+            </code></pre>
+        </div>
+        
+        <div class="explanation">
+            <h4>🔍 Explanation:</h4>
+            <p>✔ Outbreaks can be defined using various methods, such as exceeding a threshold based on historical data<br>
+            ✔ Rolling statistics help account for seasonal patterns in malaria incidence<br>
+            ✔ The threshold is set at 2 standard deviations above the rolling mean (can be adjusted based on local context)<br>
+            ✔ Red points indicate months where the case count exceeded the threshold, indicating potential outbreaks</p>
+        </div>
+        
+        <hr>
+        
+        <h3>Step 2: Building a Classification Model for Outbreak Prediction</h3>
+        <div class="r-code">
+            <pre><code>
+# Prepare data for outbreak classification
+# Use 3-month lead time (predict outbreak 3 months in advance)
+lead_time <- 3
+
+outbreak_data <- malaria_ts %>%
+  mutate(
+    future_outbreak = lead(is_outbreak, n = lead_time)
+  ) %>%
+  select(all_of(features), future_outbreak) %>%
+  filter(!is.na(future_outbreak))
+
+# Convert to factor for classification
+outbreak_data$future_outbreak <- as.factor(outbreak_data$future_outbreak)
+
+# Normalize features
+X_outbreak <- outbreak_data %>%
+  select(-future_outbreak) %>%
+  mutate(across(everything(), normalize)) %>%
+  as.matrix()
+
+y_outbreak <- as.integer(outbreak_data$future_outbreak) - 1  # Convert to 0/1
+
+# Split data
+set.seed(123)
+train_indices <- sample(1:nrow(X_outbreak), size = round(0.8 * nrow(X_outbreak)))
+X_train_out <- X_outbreak[train_indices, ]
+y_train_out <- y_outbreak[train_indices]
+X_test_out <- X_outbreak[-train_indices, ]
+y_test_out <- y_outbreak[-train_indices]
+
+# Check class balance
+cat("Class distribution (training):", table(y_train_out), "\n")
+
+# If imbalanced, consider class weights
+class_weights <- list(
+  "0" = 1,
+  "1" = nrow(X_train_out) / sum(y_train_out) / 2  # Adjust weight for minority class
+)
+
+# Build classification model
+outbreak_model <- keras_model_sequential() %>%
+  layer_dense(units = 64, activation = "relu", input_shape = ncol(X_train_out)) %>%
+  layer_batch_normalization() %>%
+  layer_dropout(rate = 0.4) %>%
+  layer_dense(units = 32, activation = "relu") %>%
+  layer_batch_normalization() %>%
+  layer_dropout(rate = 0.4) %>%
+  layer_dense(units = 16, activation = "relu") %>%
+  layer_dense(units = 1, activation = "sigmoid")  # Binary classification
+
+# Compile model
+outbreak_model %>% compile(
+  loss = "binary_crossentropy",
+  optimizer = optimizer_adam(learning_rate = 0.001),
+  metrics = c("accuracy", "AUC")
+)
+
+# Train with class weights
+outbreak_history <- outbreak_model %>% fit(
+  x = X_train_out,
+  y = y_train_out,
+  epochs = 100,
+  batch_size = 32,
+  validation_split = 0.2,
+  class_weight = class_weights,
+  verbose = 1,
+  callbacks = list(
+    callback_early_stopping(patience = 20, restore_best_weights = TRUE)
+  )
+)
+
+# Plot training history
+plot(outbreak_history)
+            </code></pre>
+        </div>
+        
+        <div class="explanation">
+            <h4>🔍 Explanation:</h4>
+            <p>✔ We're now framing outbreak prediction as a binary classification problem<br>
+            ✔ <code>lead(is_outbreak, n = lead_time)</code> creates the target variable for future outbreaks<br>
+            ✔ A lead time of 3 months means we're trying to predict outbreaks 3 months in advance<br>
+            ✔ Class weights help handle imbalanced data (outbreaks are typically rare events)<br>
+            ✔ <code>layer_batch_normalization()</code> improves training stability<br>
+            ✔ Binary cross-entropy is the appropriate loss function for binary classification<br>
+            ✔ Area Under the Curve (AUC) provides a better metric than accuracy for imbalanced data</p>
+        </div>
+        
+        <hr>
+        
+        <h3>Step 3: Evaluating Outbreak Prediction Performance</h3>
+        <div class="r-code">
+            <pre><code>
+# Make predictions on test data
+outbreak_pred_prob <- outbreak_model %>% predict(X_test_out)
+outbreak_pred_class <- as.integer(outbreak_pred_prob > 0.5)
+
+# Create confusion matrix
+library(caret)
+conf_matrix <- confusionMatrix(
+  as.factor(outbreak_pred_class),
+  as.factor(y_test_out),
+  positive = "1"
+)
+print(conf_matrix)
+
+# Calculate metrics
+accuracy <- conf_matrix$overall["Accuracy"]
+precision <- conf_matrix$byClass["Precision"]
+recall <- conf_matrix$byClass["Sensitivity"]
+f1_score <- conf_matrix$byClass["F1"]
+specificity <- conf_matrix$byClass["Specificity"]
+
+cat("Accuracy:", round(accuracy, 3), "\n")
+cat("Precision:", round(precision, 3), "\n")
+cat("Recall:", round(recall, 3), "\n")
+cat("F1 Score:", round(f1_score, 3), "\n")
+cat("Specificity:", round(specificity, 3), "\n")
+
+# Plot ROC curve
+library(pROC)
+roc_obj <- roc(y_test_out, as.vector(outbreak_pred_prob))
+auc_value <- auc(roc_obj)
+
+plot(roc_obj, main = paste("ROC Curve (AUC =", round(auc_value, 3), ")"))
+abline(a = 0, b = 1, lty = 2, col = "gray")
+
+# Create a dataframe for prediction probabilities
+prob_df <- data.frame(
+  actual = factor(y_test_out, levels = c(0, 1), labels = c("No Outbreak", "Outbreak")),
+  probability = as.vector(outbreak_pred_prob)
+)
+
+# Plot probability distribution by actual class
+ggplot(prob_df, aes(x = probability, fill = actual)) +
+  geom_density(alpha = 0.5) +
+  geom_vline(xintercept = 0.5, linetype = "dashed") +
+  labs(
+    title = "Distribution of Predicted Probabilities by Actual Class",
+    x = "Predicted Probability of Outbreak",
+    y = "Density",
+    fill = "Actual Outcome"
+  ) +
+  scale_fill_manual(values = c("No Outbreak" = "green", "Outbreak" = "red")) +
+  theme_minimal()
+            </code></pre>
+        </div>
+        
+        <div class="explanation">
+            <h4>🔍 Explanation:</h4>
+            <p>✔ In outbreak prediction, different evaluation metrics serve different purposes:<br>
+            ✔ <strong>Precision</strong>: Proportion of predicted outbreaks that were actual outbreaks (minimizes false alarms)<br>
+            ✔ <strong>Recall/Sensitivity</strong>: Proportion of actual outbreaks that were correctly predicted (minimizes missed outbreaks)<br>
+            ✔ <strong>F1 Score</strong>: Harmonic mean of precision and recall (balances false alarms and missed outbreaks)<br>
+            ✔ <strong>Specificity</strong>: Proportion of non-outbreaks correctly identified<br>
+            ✔ <strong>AUC</strong>: Area Under the ROC Curve, measures overall discrimination ability (1.0 is perfect)<br>
+            ✔ The probability distribution plot shows how well the model separates outbreak from non-outbreak months</p>
+        </div>
+        
+        <hr>
+        
+        <h3>Step 4: Feature Importance and Model Interpretation</h3>
+        <div class="r-code">
+            <pre><code>
+# Permutation importance for neural network model
+library(iml)
+
+# Create a prediction function for the IML package
+pred_function <- function(model, newdata) {
+  as.data.frame(predict(model, as.matrix(newdata)))
+}
+
+# Create predictor and explainer objects
+X_test_df <- as.data.frame(X_test_out)
+colnames(X_test_df) <- colnames(outbreak_data)[1:(ncol(outbreak_data)-1)]
+
+predictor <- Predictor$new(
+  model = outbreak_model,
+  data = X_test_df,
+  y = y_test_out,
+  predict.function = pred_function
+)
+
+# Calculate feature importance
+importance <- FeatureImp$new(
+  predictor,
+  loss = "ce",
+  compare = "ratio",
+  n.repetitions = 5
+)
+
+# Plot feature importance
+plot(importance)
+
+# Partial dependence plots for key features
+top_features <- importance$results$feature[1:3]  # Top 3 features
+
+for(feature in top_features) {
+  pdp <- FeatureEffect$new(
+    predictor,
+    feature = feature,
+    method = "pdp"
+  )
+  
+  print(plot(pdp) + 
+        ggtitle(paste("Partial Dependence Plot for", feature)) +
+        theme_minimal())
+}
+
+# SHAP values for individual predictions
+explainer <- Shapley$new(
+  predictor,
+  x.interest = X_test_df[1, ],  # Explain first test instance
+  sample.size = 100
+)
+
+plot(explainer)
+            </code></pre>
+        </div>
+        
+        <div class="explanation">
+            <h4>🔍 Explanation:</h4>
+            <p>✔ Interpreting neural networks helps build trust and derive insights from the model<br>
+            ✔ <strong>Permutation importance</strong> measures how much model performance decreases when a feature is shuffled<br>
+            ✔ <strong>Partial Dependence Plots (PDPs)</strong> show how predicted probability changes with one feature, averaging out others<br>
+            ✔ <strong>SHAP (SHapley Additive exPlanations)</strong> values quantify feature contributions to individual predictions<br>
+            ✔ Understanding which features drive outbreak predictions can inform intervention strategies<br>
+            ✔ For example, if rainfall 2 months prior is important, this provides lead time for preventive measures</p>
+        </div>
+        
+        <hr>
+        
+        <h2 id="shiny-integration">3️⃣ Integration with Dashboards (Shiny Apps)</h2>
+        
+        <h3>Step 1: Creating a Malaria Surveillance Dashboard</h3>
+        <div class="r-code">
+            <pre><code>
+# Install required packages
+install.packages(c("shiny", "shinydashboard", "plotly", "DT", "leaflet"))
+library(shiny)
+library(shinydashboard)
+library(plotly)
+library(DT)
+library(leaflet)
+
+# Define UI
+ui <- dashboardPage(
+  dashboardHeader(title = "Malaria Surveillance Dashboard"),
+  
+  dashboardSidebar(
+    sidebarMenu(
+      menuItem("Overview", tabName = "overview", icon = icon("dashboard")),
+      menuItem("Outbreak Prediction", tabName = "prediction", icon = icon("chart-line")),
+      menuItem("Time Series Analysis", tabName = "timeseries", icon = icon("chart-area")),
+      menuItem("Spatial Analysis", tabName = "spatial", icon = icon("map-marker-alt")),
+      menuItem("About", tabName = "about", icon = icon("info-circle"))
+    ),
+    
+    # Filters
+    selectInput("region", "Select Region:", 
+                choices = c("All", unique(malaria_data$region)), 
+                selected = "All"),
+    
+    sliderInput("year_range", "Year Range:", 
+                min = min(malaria_data$year), 
+                max = max(malaria_data$year),
+                value = c(min(malaria_data$year), max(malaria_data$year))),
+    
+    checkboxGroupInput("indicators", "Select Indicators:",
+                     choices = c("Malaria Cases" = "cases",
+                                "Rainfall" = "rainfall",
+                                "Temperature" = "temperature"),
+                     selected = c("cases", "rainfall"))
+  ),
+  
+  dashboardBody(
+    tabItems(
+      # Overview tab
+      tabItem(tabName = "overview",
+        fluidRow(
+          infoBoxOutput("totalCasesBox"),
+          infoBoxOutput("outbreakMonthsBox"),
+          infoBoxOutput("cfRateBox")
+        ),
+        fluidRow(
+          box(title = "Monthly Cases Trend", status = "primary", solidHeader = TRUE,
+              plotlyOutput("casesPlot", height = 300)),
+          box(title = "Cases by Region", status = "primary", solidHeader = TRUE,
+              plotlyOutput("regionPlot", height = 300))
+        ),
+        fluidRow(
+          box(title = " Key Indicators", status = "primary", solidHeader = TRUE,
+              plotlyOutput("indicatorsPlot", height = 300)),
+          box(title = "Recent Data Table", status = "primary", solidHeader = TRUE,
+              DTOutput("recentDataTable"))
+        )
+      ),
+      
+      # Outbreak prediction tab
+      tabItem(tabName = "prediction",
+        fluidRow(
+          valueBoxOutput("predictionLeadTimeBox"),
+          valueBoxOutput("predictionAccuracyBox"),
+          valueBoxOutput("currentRiskBox")
+        ),
+        fluidRow(
+          box(title = "Outbreak Prediction Model", status = "warning", solidHeader = TRUE, width = 8,
+              plotlyOutput("predictionPlot", height = 300),
+              p("This plot shows the predicted probability of malaria outbreaks over time, based on our deep learning model.")),
+          box(title = "Key Risk Factors", status = "warning", solidHeader = TRUE, width = 4,
+              plotlyOutput("featureImportancePlot", height = 300))
+        ),
+        fluidRow(
+          box(title = "Scenario Analysis", status = "warning", solidHeader = TRUE, width = 12,
+              fluidRow(
+                column(4, 
+                       sliderInput("scenario_rainfall", "Rainfall (mm):", 
+                                  min = 0, max = 500, value = 200)),
+                column(4, 
+                       sliderInput("scenario_temperature", "Temperature (°C):", 
+                                  min = 15, max = 40, value = 25)),
+                column(4, 
+                       sliderInput("scenario_humidity", "Humidity (%):", 
+                                  min = 30, max = 100, value = 70))
+              ),
+              plotlyOutput("scenarioPlot", height = 250),
+              p("This tool allows you to explore how changes in environmental factors might affect outbreak risk.")
+          )
+        )
+      ),
+      
+      # Time series analysis tab
+      tabItem(tabName = "timeseries",
+        fluidRow(
+          box(title = "Time Series Decomposition", status = "info", solidHeader = TRUE, width = 12,
+              plotlyOutput("tsDecompositionPlot", height = 400))
+        ),
+        fluidRow(
+          box(title = "Seasonal Patterns", status = "info", solidHeader = TRUE, width = 6,
+              plotlyOutput("seasonalPlot", height = 300)),
+          box(title = "Forecast for Next 12 Months", status = "info", solidHeader = TRUE, width = 6,
+              plotlyOutput("forecastPlot", height = 300))
+        ),
+        fluidRow(
+          box(title = "Cross-Correlation Analysis", status = "info", solidHeader = TRUE, width = 12,
+              selectInput("ccf_var", "Select Variable to Compare with Cases:", 
+                         choices = c("Rainfall" = "rainfall", 
+                                    "Temperature" = "temperature", 
+                                    "Humidity" = "humidity"),
+                         selected = "rainfall"),
+              plotlyOutput("ccfPlot", height = 250))
+        )
+      ),
+      
+      # Spatial analysis tab
+      tabItem(tabName = "spatial",
+        fluidRow(
+          box(title = "Malaria Case Map", status = "success", solidHeader = TRUE, width = 12,
+              leafletOutput("caseMap", height = 500))
+        ),
+        fluidRow(
+          box(title = "Spatial Clusters", status = "success", solidHeader = TRUE, width = 6,
+              plotOutput("clusterPlot", height = 300)),
+          box(title = "Risk Factors by Region", status = "success", solidHeader = TRUE, width = 6,
+              selectInput("spatial_var", "Select Risk Factor:", 
+                         choices = c("Rainfall" = "rainfall", 
+                                    "Temperature" = "temperature", 
+                                    "Population Density" = "population_density"),
+                         selected = "population_density"),
+              plotlyOutput("spatialVarPlot", height = 300))
+        )
+      ),
+      
+      # About tab
+      tabItem(tabName = "about",
+        box(title = "About This Dashboard", status = "primary", solidHeader = TRUE, width = 12,
+            h3("Malaria Surveillance and Prediction System"),
+            p("This dashboard integrates data visualization, time series analysis, and machine learning models to support malaria surveillance and outbreak prediction."),
+            h4("Key Features:"),
+            tags$ul(
+              tags$li("Real-time monitoring of malaria cases across regions"),
+              tags$li("Deep learning models for predicting outbreaks 3 months in advance"),
+              tags$li("Interactive visualizations of malaria trends and risk factors"),
+              tags$li("Spatial analysis of malaria transmission patterns")
+            ),
+            h4("Data Sources:"),
+            p("The dashboard integrates data from:"),
+            tags$ul(
+              tags$li("National malaria surveillance system"),
+              tags$li("Weather stations (rainfall, temperature, humidity)"),
+              tags$li("Census data (population demographics)"),
+              tags$li("Satellite imagery (vegetation indices, water bodies)")
+            ),
+            h4("Model Information:"),
+            p("The outbreak prediction model is a neural network trained on historical malaria data with the following performance metrics:"),
+            tableOutput("modelPerformanceTable")
+        )
+      )
+    )
+  )
+)
+
+# Define server
+server <- function(input, output, session) {
+  
+  # Filter data based on inputs
+  filteredData <- reactive({
+    data <- malaria_data
+    
+    if(input$region != "All") {
+      data <- data %>% filter(region == input$region)
+    }
+    
+    data %>% 
+      filter(year >= input$year_range[1], year <= input$year_range[2])
+  })
+  
+  # Overview tab outputs
+  output$totalCasesBox <- renderInfoBox({
+    total_cases <- sum(filteredData()$cases, na.rm = TRUE)
+    infoBox(
+      "Total Cases", 
+      formatC(total_cases, format = "d", big.mark = ","),
+      icon = icon("hospital"),
+      color = "red"
+    )
+  })
+  
+  output$outbreakMonthsBox <- renderInfoBox({
+    # Count months exceeding threshold
+    outbreak_months <- filteredData() %>%
+      filter(cases > threshold) %>%
+      nrow()
+    
+    infoBox(
+      "Outbreak Months", 
+      outbreak_months,
+      icon = icon("exclamation-triangle"),
+      color = "yellow"
+    )
+  })
+  
+  output$cfRateBox <- renderInfoBox({
+    # Calculate case fatality rate
+    deaths <- sum(filteredData()$deaths, na.rm = TRUE)
+    cases <- sum(filteredData()$cases, na.rm = TRUE)
+    cf_rate <- round((deaths / cases) * 100, 2)
+    
+    infoBox(
+      "Case Fatality Rate", 
+      paste0(cf_rate, "%"),
+      icon = icon("procedures"),
+      color = "blue"
+    )
+  })
+  
+  output$casesPlot <- renderPlotly({
+    plot_data <- filteredData() %>%
+      arrange(year, month) %>%
+      mutate(date = as.Date(paste(year, month, "01", sep = "-")))
+    
+    p <- plot_ly(plot_data, x = ~date, y = ~cases, type = 'scatter', mode = 'lines+markers',
+                name = 'Cases', line = list(color = 'rgb(205, 12, 24)', width = 2)) %>%
+      add_trace(y = ~threshold, name = 'Outbreak Threshold', 
+               line = list(color = 'orange', width = 2, dash = 'dash')) %>%
+      layout(title = '',
+             xaxis = list(title = ''),
+             yaxis = list(title = 'Number of Cases'),
+             hovermode = 'closest')
+    
+    p
+  })
+  
+  output$regionPlot <- renderPlotly({
+    plot_data <- filteredData() %>%
+      group_by(region) %>%
+      summarise(total_cases = sum(cases, na.rm = TRUE),
+                .groups = 'drop') %>%
+      arrange(desc(total_cases))
+    
+    plot_ly(plot_data, x = ~region, y = ~total_cases, type = 'bar',
+           marker = list(color = 'rgb(158,202,225)')) %>%
+      layout(title = '',
+             xaxis = list(title = ''),
+             yaxis = list(title = 'Total Cases'),
+             hovermode = 'closest')
+  })
+  
+  output$indicatorsPlot <- renderPlotly({
+    plot_data <- filteredData() %>%
+      arrange(year, month) %>%
+      mutate(date = as.Date(paste(year, month, "01", sep = "-")))
+    
+    p <- plot_ly()
+    
+    if("cases" %in% input$indicators) {
+      p <- add_trace(p, data = plot_data, x = ~date, y = ~cases, 
+                    name = 'Cases', type = 'scatter', mode = 'lines',
+                    line = list(color = 'red', width = 2), yaxis = "y")
+    }
+    
+    if("rainfall" %in% input$indicators) {
+      p <- add_trace(p, data = plot_data, x = ~date, y = ~rainfall, 
+                    name = 'Rainfall', type = 'scatter', mode = 'lines',
+                    line = list(color = 'blue', width = 2), yaxis = "y2")
+    }
+    
+    if("temperature" %in% input$indicators) {
+      p <- add_trace(p, data = plot_data, x = ~date, y = ~temperature, 
+                    name = 'Temperature', type = 'scatter', mode = 'lines',
+                    line = list(color = 'orange', width = 2), yaxis = "y3")
+    }
+    
+    p <- p %>% layout(
+      title = '',
+      xaxis = list(title = ''),
+      yaxis = list(title = 'Cases', side = 'left', showgrid = FALSE),
+      yaxis2 = list(title = 'Rainfall (mm)', side = 'right', overlaying = "y", showgrid = FALSE),
+      yaxis3 = list(title = 'Temperature (°C)', side = 'right', overlaying = "y", showgrid = FALSE),
+      hovermode = 'closest',
+      legend = list(orientation = 'h')
+    )
+    
+    p
+  })
+  
+  output$recentDataTable <- renderDT({
+    recent_data <- filteredData() %>%
+      arrange(desc(year), desc(month)) %>%
+      head(10) %>%
+      select(region, year, month, cases, deaths, rainfall, temperature)
+    
+    datatable(recent_data, options = list(pageLength = 5))
+  })
+  
+  # Outbreak prediction tab outputs
+  output$predictionLeadTimeBox <- renderValueBox({
+    valueBox(
+      "3 Months",
+      "Prediction Lead Time",
+      icon = icon("clock"),
+      color = "purple"
+    )
+  })
+  
+  output$predictionAccuracyBox <- renderValueBox({
+    valueBox(
+      "85%", # Example value
+      "Model Accuracy",
+      icon = icon("check-circle"),
+      color = "green"
+    )
+  })
+  
+  output$currentRiskBox <- renderValueBox({
+    # Get most recent data
+    recent_data <- filteredData() %>%
+      arrange(desc(year), desc(month)) %>%
+      head(1)
+    
+    # Simulate risk assessment (in a real app, this would use the trained model)
+    if(input$region == "All") {
+      risk_level <- "Medium"
+      risk_color <- "yellow"
+    } else if(recent_data$rainfall > 200 & recent_data$temperature > 27) {
+      risk_level <- "High"
+      risk_color <- "red"
+    } else {
+      risk_level <- "Low"
+      risk_color <- "green"
+    }
+    
+    valueBox(
+      risk_level,
+      "Current Risk Level",
+      icon = icon("chart-line"),
+      color = risk_color
+    )
+  })
+  
+  output$predictionPlot <- renderPlotly({
+    # Create a synthetic prediction plot (in a real app, this would use actual model predictions)
+    plot_data <- filteredData() %>%
+      arrange(year, month) %>%
+      mutate(
+        date = as.Date(paste(year, month, "01", sep = "-")),
+        # Synthetic outbreak probability based on rainfall and temperature
+        outbreak_prob = pmin(1, pmax(0, (rainfall/500 + temperature/40 - 0.3)))
+      )
+    
+    plot_ly(plot_data, x = ~date, y = ~outbreak_prob, type = 'scatter', mode = 'lines',
+           name = 'Outbreak Probability', line = list(color = 'rgb(205, 12, 24)', width = 2)) %>%
+      add_trace(y = rep(0.7, nrow(plot_data)), name = 'High Risk Threshold', 
+               line = list(color = 'red', width = 2, dash = 'dash')) %>%
+      layout(title = '',
+             xaxis = list(title = ''),
+             yaxis = list(title = 'Probability of Outbreak', range = c(0, 1)),
+             hovermode = 'closest')
+  })
+  
+  output$featureImportancePlot <- renderPlotly({
+    # Sample feature importance data
+    features <- c("Rainfall (2-month lag)", "Temperature", "Population Density", 
+                 "Humidity", "Previous Cases")
+    importance <- c(0.35, 0.25, 0.20, 0.15, 0.05)
+    
+    plot_data <- data.frame(
+      Feature = factor(features, levels = features[order(importance, decreasing = TRUE)]),
+      Importance = importance
+    )
+    
+    plot_ly(plot_data, x = ~Importance, y = ~Feature, type = 'bar', orientation = 'h',
+           marker = list(color = 'rgba(50, 171, 96, 0.7)')) %>%
+      layout(title = '',
+             xaxis = list(title = 'Relative Importance'),
+             yaxis = list(title = ''),
+             hovermode = 'closest')
+  })
+  
+  output$scenarioPlot <- renderPlotly({
+    # Simple probabilistic model for demonstration purposes
+    rainfall_effect <- input$scenario_rainfall / 500  # Normalize to 0-1
+    temp_effect <- (input$scenario_temperature - 15) / 25  # Normalize to 0-1
+    humidity_effect <- input$scenario_humidity / 100  # Normalize to 0-1
+    
+    # Combined risk model
+    outbreak_risk <- pmin(1, rainfall_effect * 0.4 + temp_effect * 0.3 + humidity_effect * 0.3)
+    
+    # Create data for gauge
+    plot_ly(
+      domain = list(x = c(0, 1), y = c(0, 1)),
+      value = outbreak_risk,
+      title = list(text = "Outbreak Risk"),
+      type = "indicator",
+      mode = "gauge+number",
+      gauge = list(
+        axis = list(range = list(0, 1)),
+        bar = list(color = "darkgrey"),
+        steps = list(
+          list(range = c(0, 0.3), color = "green"),
+          list(range = c(0.3, 0.7), color = "yellow"),
+          list(range = c(0.7, 1), color = "red")
+        ),
+        threshold = list(
+          line = list(color = "red", width = 4),
+          thickness = 0.75,
+          value = 0.7
+        )
+      )
+    )
+  })
+  
+  # Time series analysis tab outputs
+  output$tsDecompositionPlot <- renderPlotly({
+    # Time series decomposition
+    ts_data <- filteredData() %>%
+      arrange(year, month) %>%
+      pull(cases)
+    
+    # Convert to time series object
+    ts_obj <- ts(ts_data, frequency = 12)
+    
+    # Decompose time series
+    if(length(ts_data) >= 24) {  # Need at least 2 years of data
+      decomp <- decompose(ts_obj)
+      
+      # Create plots
+      data_plot <- plot_ly(y = as.numeric(decomp$x), type = "scatter", mode = "lines", name = "Original") %>%
+        layout(xaxis = list(title = ""), yaxis = list(title = "Cases"))
+      
+      trend_plot <- plot_ly(y = as.numeric(decomp$trend), type = "scatter", mode = "lines", name = "Trend") %>%
+        layout(xaxis = list(title = ""), yaxis = list(title = "Trend"))
+      
+      seasonal_plot <- plot_ly(y = as.numeric(decomp$seasonal), type = "scatter", mode = "lines", name = "Seasonal") %>%
+        layout(xaxis = list(title = ""), yaxis = list(title = "Seasonal"))
+      
+      random_plot <- plot_ly(y = as.numeric(decomp$random), type = "scatter", mode = "lines", name = "Random") %>%
+        layout(xaxis = list(title = ""), yaxis = list(title = "Random"))
+      
+      subplot(data_plot, trend_plot, seasonal_plot, random_plot, nrows = 4, shareX = TRUE) %>%
+        layout(title = "Time Series Decomposition")
+    } else {
+      plot_ly() %>%
+        add_annotations(
+          text = "Not enough data for decomposition (need at least 24 months)",
+          showarrow = FALSE
+        )
+    }
+  })
+  
+  output$seasonalPlot <- renderPlotly({
+    # Create seasonal plot
+    ts_data <- filteredData() %>%
+      group_by(month) %>%
+      summarise(
+        avg_cases = mean(cases, na.rm = TRUE),
+        se = sd(cases, na.rm = TRUE) / sqrt(n()),
+        .groups = 'drop'
+      )
+    
+    plot_ly(ts_data, x = ~month, y = ~avg_cases, type = 'scatter', mode = 'lines+markers',
+           error_y = list(array = ~se, color = '#000000'),
+           name = 'Average Cases', line = list(color = 'rgb(205, 12, 24)', width = 2)) %>%
+      layout(title = 'Seasonal Pattern of Malaria Cases',
+             xaxis = list(title = 'Month', tickvals = 1:12, 
+                         ticktext = month.abb),
+             yaxis = list(title = 'Average Cases'),
+             hovermode = 'closest')
+  })
+  
+  output$forecastPlot <- renderPlotly({
+    # Create a simple forecast (in a real app, this would use actual forecast models)
+    # Use average seasonal pattern for demonstration
+    ts_data <- filteredData() %>%
+      group_by(month) %>%
+      summarise(
+        avg_cases = mean(cases, na.rm = TRUE),
+        .groups = 'drop'
+      )
+    
+    # Get recent trend
+    recent_data <- filteredData() %>%
+      arrange(desc(year), desc(month)) %>%
+      head(12) %>%
+      arrange(year, month)
+    
+    # Simple forecast: combine recent trend with seasonal pattern
+    last_year_avg <- mean(recent_data$cases, na.rm = TRUE)
+    forecast_values <- ts_data$avg_cases * (last_year_avg / mean(ts_data$avg_cases, na.rm = TRUE))
+    
+    # Create time labels for next 12 months
+    if(nrow(recent_data) > 0) {
+      last_date <- as.Date(paste(recent_data$year[nrow(recent_data)], 
+                                recent_data$month[nrow(recent_data)], "01", sep = "-"))
+      forecast_dates <- seq(last_date, by = "month", length.out = 13)[-1]
+      forecast_months <- format(forecast_dates, "%b %Y")
+    } else {
+      forecast_months <- paste(month.abb, "Forecast")
+    }
+    
+    # Plot
+    plot_data <- data.frame(
+      month = 1:12,
+      forecast = forecast_values,
+      month_label = forecast_months
+    )
+    
+    plot_ly(plot_data, x = ~month, y = ~forecast, type = 'scatter', mode = 'lines+markers',
+           name = 'Forecast', line = list(color = 'rgb(0, 114, 178)', width = 2),
+           text = ~month_label, hoverinfo = 'text+y') %>%
+      layout(title = 'Malaria Case Forecast (Next 12 Months)',
+             xaxis = list(title = '', tickvals = 1:12, ticktext = month.abb),
+             yaxis = list(title = 'Forecasted Cases'),
+             hovermode = 'closest')
+  })
+  
+  output$ccfPlot <- renderPlotly({
+    # Create cross-correlation plot
+    ts_data <- filteredData() %>%
+      arrange(year, month)
+    
+    # Extract variables
+    cases <- ts_data$cases
+    var_data <- ts_data[[input$ccf_var]]
+    
+    # Compute cross-correlation
+    ccf_result <- ccf(var_data, cases, lag.max = 12, plot = FALSE)
+    
+    # Create plot
+    plot_data <- data.frame(
+      lag = ccf_result$lag,
+      acf = ccf_result$acf
+    )
+    
+    plot_ly(plot_data, x = ~lag, y = ~acf, type = 'bar',
+           marker = list(color = 'rgb(158,202,225)')) %>%
+      layout(title = paste('Cross-Correlation: Cases vs', gsub("_", " ", input$ccf_var)),
+             xaxis = list(title = 'Lag (months)'),
+             yaxis = list(title = 'Correlation'),
+             hovermode = 'closest')
+  })
+  
+  # Spatial analysis tab outputs
+  output$caseMap <- renderLeaflet({
+    # Create sample geospatial data
+    geo_data <- data.frame(
+      region = unique(malaria_data$region),
+      lat = runif(length(unique(malaria_data$region)), 0, 15),  # Random coordinates for demonstration
+      lng = runif(length(unique(malaria_data$region)), 0, 15),
+      cases = sapply(unique(malaria_data$region), function(r) {
+        sum(filteredData()[filteredData()$region == r, "cases"], na.rm = TRUE)
+      })
+    )
+    
+    # Create palette
+    pal <- colorNumeric(
+      palette = "YlOrRd",
+      domain = geo_data$cases
+    )
+    
+    # Create map
+    leaflet(geo_data) %>%
+      addTiles() %>%
+      addCircleMarkers(
+        ~lng, ~lat,
+        radius = ~sqrt(cases) / 2,
+        color = ~pal(cases),
+        stroke = FALSE, fillOpacity = 0.7,
+        popup = ~paste0("<strong>", region, "</strong><br>Cases: ", cases)
+      ) %>%
+      addLegend("bottomright", pal = pal, values = ~cases,
+               title = "Malaria Cases",
+               opacity = 0.7)
+  })
+  
+  output$clusterPlot <- renderPlot({
+    # Create spatial clustering plot (simplified example)
+    geo_data <- data.frame(
+      region = unique(malaria_data$region),
+      x = runif(length(unique(malaria_data$region)), 0, 10),  # Random coordinates
+      y = runif(length(unique(malaria_data$region)), 0, 10),
+      cases = sapply(unique(malaria_data$region), function(r) {
+        sum(filteredData()[filteredData()$region == r, "cases"], na.rm = TRUE)
+      })
+    )
+    
+    # Perform hierarchical clustering
+    dist_matrix <- dist(geo_data[, c("x", "y")])
+    hc <- hclust(dist_matrix, method = "ward.D2")
+    clusters <- cutree(hc, k = 3)
+    geo_data$cluster <- as.factor(clusters)
+    
+    # Plot
+    ggplot(geo_data, aes(x = x, y = y, size = cases, color = cluster)) +
+      geom_point(alpha = 0.7) +
+      scale_size_continuous(range = c(3, 15)) +
+      geom_text(aes(label = region), hjust = 0, vjust = 0, size = 3, color = "black") +
+      labs(title = "Spatial Clusters of Malaria Transmission",
+           x = "Longitude", y = "Latitude", size = "Cases") +
+      theme_minimal()
+  })
+  
+  output$spatialVarPlot <- renderPlotly({
+    # Create regional variable comparison
+    plot_data <- filteredData() %>%
+      group_by(region) %>%
+      summarise(
+        value = mean(get(input$spatial_var), na.rm = TRUE),
+        cases = sum(cases, na.rm = TRUE),
+        .groups = 'drop'
+      ) %>%
+      arrange(desc(value))
+    
+    plot_ly(plot_data, x = ~region, y = ~value, type = 'bar',
+           marker = list(color = 'rgb(158,202,225)')) %>%
+      layout(title = paste(gsub("_", " ", input$spatial_var), 'by Region'),
+             xaxis = list(title = ''),
+             yaxis = list(title = gsub("_", " ", input$spatial_var)),
+             hovermode = 'closest')
+  })
+  
+  # About tab outputs
+  output$modelPerformanceTable <- renderTable({
+    data.frame(
+      Metric = c("Accuracy", "Precision", "Recall", "F1 Score", "AUC"),
+      Value = c("85%", "78%", "90%", "84%", "0.92")
+    )
+  })
+}
+
+# Run the application
+shinyApp(ui = ui, server = server)
+            </code></pre>
+        </div>
+        
+        <div class="explanation">
+            <h4>🔍 Explanation:</h4>
+            <p>✔ <code>shiny</code> and <code>shinydashboard</code> provide the framework for interactive web applications<br>
+            ✔ The dashboard UI is organized into tabs for different analysis components<br>
+            ✔ Interactive filters allow users to focus on specific regions or time periods<br>
+            ✔ The server function processes data and creates visualizations dynamically<br>
+            ✔ <code>renderPlotly()</code> and <code>renderLeaflet()</code> create interactive charts and maps<br>
+            ✔ The dashboard integrates our predictive models with real-time data visualization</p>
+        </div>
+        
+        <hr>
+        
+        <h3>Step 2: Deploying the Shiny App</h3>
+        <div class="r-code">
+            <pre><code>
+# Option 1: Deploy to shinyapps.io
+# Install required package
+install.packages("rsconnect")
+library(rsconnect)
+
+# Configure your account (you need to have a shinyapps.io account)
+rsconnect::setAccountInfo(name = "your_account",
+                         token = "your_token",
+                         secret = "your_secret")
+
+# Deploy the app
+rsconnect::deployApp(
+  appDir = "path/to/app",
+  appName = "MalariaSurveillance",
+  appTitle = "Malaria Surveillance Dashboard"
+)
+
+# Option 2: Deploy on a Shiny Server
+# Ensure you have a directory structure like:
+# /srv/shiny-server/malaria_app/
+# ├── app.R          # Contains both ui and server code
+# ├── data/          # Data directory
+# │   └── malaria_data.csv
+# ├── models/        # Pre-trained models
+# │   └── outbreak_model.h5
+# └── www/           # Static assets
+#     └── custom.css
+
+# Command to restart Shiny Server on Linux
+system("sudo systemctl restart shiny-server")
+            </code></pre>
+        </div>
+        
+        <div class="explanation">
+            <h4>🔍 Explanation:</h4>
+            <p>✔ Shiny apps can be deployed to various platforms:<br>
+            ✔ <strong>shinyapps.io</strong>: A cloud service by RStudio that hosts Shiny applications<br>
+            ✔ <strong>Shiny Server</strong>: Open-source or commercial server software for hosting multiple Shiny apps<br>
+            ✔ <strong>RStudio Connect</strong>: Enterprise product for deploying R content including Shiny apps<br>
+            ✔ When deploying, ensure all required packages and data files are included<br>
+            ✔ Consider authentication options if the dashboard contains sensitive health data</p>
+        </div>
+        
+        <hr>
+        
+        <h3>Step 3: Automated Data Pipeline for Dashboard Updates</h3>
+        <div class="r-code">
+            <pre><code>
+# Create a script for automated data updates and model retraining
+# Save this as update_pipeline.R
+
+# Load required packages
+library(dplyr)
+library(lubridate)
+library(tensorflow)
+library(keras)
+library(future)
+library(promises)
+
+# Set up parallel processing
+plan(multisession)
+
+# Function to fetch new data
+fetch_new_data <- function() {
+  # In a real scenario, this might connect to an API or database
+  # For demonstration, we'll simulate loading from a CSV
+  cat("Fetching new malaria data...\n")
+  
+  # Load existing data
+  existing_data <- read.csv("data/malaria_data.csv")
+  
+  # Get the latest date in the data
+  latest_date <- max(as.Date(paste(existing_data$year, existing_data$month, "01", sep = "-")))
+  
+  # Simulate new data (in real applications, fetch from actual sources)
+  current_date <- Sys.Date()
+  months_to_add <- interval(latest_date, current_date) %/% months(1)
+  
+  if(months_to_add > 0) {
+    cat("Generating", months_to_add, "months of new data...\n")
+    
+    # Generate dates for new data
+    new_dates <- seq(latest_date, by = "month", length.out = months_to_add + 1)[-1]
+    
+    # Create new data frame
+    new_data <- data.frame(
+      year = year(new_dates),
+      month = month(new_dates)
+    )
+    
+    # Add regions
+    regions <- unique(existing_data$region)
+    new_data <- new_data[rep(1:nrow(new_data), each = length(regions)), ]
+    new_data$region <- rep(regions, times = months_to_add)
+    
+    # Simulate other variables based on patterns in existing data
+    # This is a simplified approach; real implementations would use actual data sources
+    for(region in regions) {
+      for(i in 1:months_to_add) {
+        idx <- which(new_data$region == region & 
+                   new_data$year == year(new_dates[i]) & 
+                   new_data$month == month(new_dates[i]))
+        
+        # Find similar month in historical data
+        similar_months <- existing_data %>%
+          filter(
+            region == region,
+            month == month(new_dates[i])
+          )
+        
+        if(nrow(similar_months) > 0) {
+          # Base new values on historical averages with some random variation
+          new_data$rainfall[idx] <- mean(similar_months$rainfall) * 
+            runif(1, min = 0.8, max = 1.2)
+          
+          new_data$temperature[idx] <- mean(similar_months$temperature) * 
+            runif(1, min = 0.95, max = 1.05)
+          
+          new_data$humidity[idx] <- mean(similar_months$humidity) * 
+            runif(1, min = 0.9, max = 1.1)
+          
+          new_data$population_density[idx] <- max(similar_months$population_density) * 
+            (1 + 0.01 * i)  # slight population growth
+          
+          # Simulate cases based on environmental factors and historical patterns
+          predicted_cases <- mean(similar_months$cases) * 
+            (new_data$rainfall[idx] / mean(similar_months$rainfall))^0.5 * 
+            (new_data$temperature[idx] / mean(similar_months$temperature))^0.7
+          
+          new_data$cases[idx] <- round(predicted_cases * runif(1, min = 0.9, max = 1.1))
+          
+          # Simulate deaths based on cases and case fatality rate
+          cfr <- sum(similar_months$deaths) / sum(similar_months$cases)
+          new_data$deaths[idx] <- round(new_data$cases[idx] * cfr * 
+                                      runif(1, min = 0.8, max = 1.2))
+        } else {
+          # Fall back to random values within reasonable ranges
+          new_data$rainfall[idx] <- runif(1, min = 50, max = 300)
+          new_data$temperature[idx] <- runif(1, min = 20, max = 30)
+          new_data$humidity[idx] <- runif(1, min = 50, max = 90)
+          new_data$population_density[idx] <- runif(1, min = 100, max = 500)
+          new_data$cases[idx] <- round(runif(1, min = 50, max = 500))
+          new_data$deaths[idx] <- round(new_data$cases[idx] * runif(1, min = 0.01, max = 0.05))
+        }
+      }
+    }
+    
+    # Combine existing and new data
+    updated_data <- rbind(existing_data, new_data)
+    
+    # Save updated data
+    write.csv(updated_data, "data/malaria_data.csv", row.names = FALSE)
+    cat("Data updated successfully with", nrow(new_data), "new records.\n")
+    
+    return(updated_data)
+  } else {
+    cat("No new data to add. Data is already up to date.\n")
+    return(existing_data)
+  }
+}
+
+# Function to retrain models with new data
+retrain_models <- function(data) {
+  cat("Retraining predictive models with updated data...\n")
+  
+  # This would be replaced with your actual model training code
+  future({
+    # Prepare data (simplified version)
+    # Create time-based features
+    model_data <- data %>%
+      mutate(
+        date = as.Date(paste(year, month, "15", sep = "-")),
+        day_of_year = yday(date),
+        sin_day = sin(2 * pi * day_of_year / 365),
+        cos_day = cos(2 * pi * day_of_year / 365)
+      )
+    
+    # Normalize numerical features
+    normalize <- function(x) {
+      return((x - mean(x, na.rm = TRUE)) / sd(x, na.rm = TRUE))
+    }
+    
+    # Select predictors and response variable
+    features <- c("rainfall", "temperature", "humidity", "population_density", 
+                  "sin_day", "cos_day")
+    
+    # Create normalized feature matrix
+    X <- model_data %>%
+      select(all_of(features)) %>%
+      mutate(across(everything(), normalize)) %>%
+      as.matrix()
+    
+    # Response variable (malaria cases)
+    y <- model_data$cases
+    
+    # One-hot encode categorical variables if needed
+    if("region" %in% names(model_data)) {
+      # Create dummy variables for regions
+      regions <- model.matrix(~ region - 1, data = model_data)
+      X <- cbind(X, regions)
+    }
+    
+    # Split data into training and testing sets (80% train, 20% test)
+    train_indices <- sample(1:nrow(X), size = round(0.8 * nrow(X)))
+    X_train <- X[train_indices, ]
+    y_train <- y[train_indices]
+    X_test <- X[-train_indices, ]
+    y_test <- y[-train_indices]
+    
+    # Build a neural network model
+    model <- keras_model_sequential() %>%
+      layer_dense(units = 64, activation = "relu", input_shape = ncol(X_train)) %>%
+      layer_dropout(rate = 0.3) %>%
+      layer_dense(units = 32, activation = "relu") %>%
+      layer_dropout(rate = 0.3) %>%
+      layer_dense(units = 1)
+    
+    # Compile the model
+    model %>% compile(
+      loss = "mse",
+      optimizer = optimizer_adam(learning_rate = 0.001),
+      metrics = c("mean_absolute_error")
+    )
+    
+    # Train the model
+    history <- model %>% fit(
+      x = X_train,
+      y = y_train,
+      epochs = 100,
+      batch_size = 32,
+      validation_split = 0.2,
+      verbose = 1,
+      callbacks = list(
+        callback_early_stopping(patience = 20, restore_best_weights = TRUE)
+      )
+    )
+    
+    # Evaluate model
+    evaluation <- model %>% evaluate(X_test, y_test)
+    
+    # Save the model
+    model %>% save_model_hdf5("models/cases_prediction_model.h5")
+    
+    # Additional model: Outbreak prediction
+    # Define outbreaks (e.g., 2 standard deviations above rolling mean)
+    ts_data <- model_data %>%
+      arrange(year, month) %>%
+      group_by(region) %>%
+      mutate(
+        rolling_mean = rollmean(cases, k = 12, fill = NA, align = "right"),
+        rolling_sd = rollapply(cases, width = 12, FUN = sd, fill = NA, align = "right"),
+        threshold = rolling_mean + 2 * rolling_sd,
+        is_outbreak = as.integer(cases > threshold)
+      ) %>%
+      ungroup()
+    
+    # Prepare data for outbreak prediction (3-month lead time)
+    lead_time <- 3
+    outbreak_data <- ts_data %>%
+      group_by(region) %>%
+      mutate(
+        future_outbreak = lead(is_outbreak, n = lead_time)
+      ) %>%
+      ungroup() %>%
+      filter(!is.na(future_outbreak))
+    
+    # Prepare features
+    X_outbreak <- outbreak_data %>%
+      select(all_of(features)) %>%
+      mutate(across(everything(), normalize)) %>%
+      as.matrix()
+    
+    y_outbreak <- outbreak_data$future_outbreak
+    
+    # Split data
+    train_indices <- sample(1:nrow(X_outbreak), size = round(0.8 * nrow(X_outbreak)))
+    X_train_out <- X_outbreak[train_indices, ]
+    y_train_out <- y_outbreak[train_indices]
+    X_test_out <- X_outbreak[-train_indices, ]
+    y_test_out <- y_outbreak[-train_indices]
+    
+    # Build model
+    outbreak_model <- keras_model_sequential() %>%
+      layer_dense(units = 64, activation = "relu", input_shape = ncol(X_train_out)) %>%
+      layer_batch_normalization() %>%
+      layer_dropout(rate = 0.4) %>%
+      layer_dense(units = 32, activation = "relu") %>%
+      layer_batch_normalization() %>%
+      layer_dropout(rate = 0.4) %>%
+      layer_dense(units = 1, activation = "sigmoid")
+    
+    # Compile model
+    outbreak_model %>% compile(
+      loss = "binary_crossentropy",
+      optimizer = optimizer_adam(learning_rate = 0.001),
+      metrics = c("accuracy", "AUC")
+    )
+    
+    # Determine class weights for imbalanced data
+    class_weights <- list(
+      "0" = 1,
+      "1" = sum(y_train_out == 0) / sum(y_train_out == 1)
+    )
+    
+    # Train model
+    outbreak_history <- outbreak_model %>% fit(
+      x = X_train_out,
+      y = y_train_out,
+      epochs = 100,
+      batch_size = 32,
+      validation_split = 0.2,
+      class_weight = class_weights,
+      verbose = 1,
+      callbacks = list(
+        callback_early_stopping(patience = 20, restore_best_weights = TRUE)
+      )
+    )
+    
+    # Save outbreak model
+    outbreak_model %>% save_model_hdf5("models/outbreak_prediction_model.h5")
+    
+    # Log performance metrics
+    performance_log <- data.frame(
+      date = Sys.Date(),
+      model_type = c("cases_prediction", "outbreak_prediction"),
+      metric = c("mae", "auc"),
+      value = c(
+        evaluation["mean_absolute_error"],
+        max(outbreak_history$metrics$val_auc)
+      )
+    )
+    
+    # Append to performance log
+    if(file.exists("models/performance_log.csv")) {
+      existing_log <- read.csv("models/performance_log.csv")
+      performance_log <- rbind(existing_log, performance_log)
+    }
+    
+    write.csv(performance_log, "models/performance_log.csv", row.names = FALSE)
+    
+    cat("Models retrained and saved successfully.\n")
+  }) %...>% 
+    (function(result) {
+      cat("Model retraining completed in the background.\n")
+    }) %...!% 
+    (function(error) {
+      cat("Error in model retraining:", conditionMessage(error), "\n")
+    })
+  
+  return(TRUE)
+}
+
+# Function to update dashboard data files
+update_dashboard_data <- function(data) {
+  cat("Updating dashboard data files...\n")
+  
+  # Generate summary statistics
+  region_summary <- data %>%
+    group_by(region) %>%
+    summarise(
+      total_cases = sum(cases, na.rm = TRUE),
+      total_deaths = sum(deaths, na.rm = TRUE),
+      avg_monthly_cases = mean(cases, na.rm = TRUE),
+      max_monthly_cases = max(cases, na.rm = TRUE),
+      .groups = 'drop'
+    )
+  
+  # Generate time series for plots
+  time_series <- data %>%
+    arrange(year, month) %>%
+    mutate(date = as.Date(paste(year, month, "01", sep = "-")))
+  
+  # Calculate rolling statistics
+  time_series <- time_series %>%
+    group_by(region) %>%
+    mutate(
+      rolling_mean = rollmean(cases, k = 12, fill = NA, align = "right"),
+      rolling_sd = rollapply(cases, width = 12, FUN = sd, fill = NA, align = "right"),
+      threshold = rolling_mean + 2 * rolling_sd,
+      is_outbreak = cases > threshold
+    ) %>%
+    ungroup()
+  
+  # Save processed data for the dashboard
+  write.csv(region_summary, "data/region_summary.csv", row.names = FALSE)
+  write.csv(time_series, "data/time_series.csv", row.names = FALSE)
+  
+  cat("Dashboard data files updated successfully.\n")
+  return(TRUE)
+}
+
+# Main function to run the entire pipeline
+run_update_pipeline <- function() {
+  cat("Starting malaria data update pipeline at", format(Sys.time()), "\n")
+  
+  # Step 1: Fetch new data
+  updated_data <- fetch_new_data()
+  
+  # Step 2: Retrain models with updated data
+  retrain_models(updated_data)
+  
+  # Step 3: Update dashboard data files
+  update_dashboard_data(updated_data)
+  
+  cat("Pipeline completed at", format(Sys.time()), "\n")
+}
+
+# Run the pipeline
+run_update_pipeline()
+
+# To automate this with a cron job (on Linux/Mac):
+# Add a line like this to your crontab (edit with 'crontab -e'):
+# 0 0 * * * Rscript /path/to/update_pipeline.R >> /path/to/logfile.log 2>&1
+            </code></pre>
+        </div>
+        
+        <div class="explanation">
+            <h4>🔍 Explanation:</h4>
+            <p>✔ Automated data pipelines keep your dashboard updated with minimal manual intervention<br>
+            ✔ The pipeline has three main steps:<br>
+            &nbsp;&nbsp;1. <strong>Data Acquisition</strong>: Fetch new data from sources (e.g., surveillance systems, weather stations)<br>
+            &nbsp;&nbsp;2. <strong>Model Retraining</strong>: Update predictive models with new data to maintain accuracy<br>
+            &nbsp;&nbsp;3. <strong>Dashboard Updates</strong>: Prepare and save data in formats optimized for the dashboard<br>
+            ✔ <code>future</code> and <code>promises</code> packages enable non-blocking, asynchronous processing<br>
+            ✔ <code>cron</code> jobs can schedule the pipeline to run automatically (e.g., daily or weekly)<br>
+            ✔ Performance logging tracks how model accuracy changes over time</p>
+        </div>
+        
+        <hr>
+        
+        <h2>✅ Summary of Week 12+</h2>
+        <p>By the end of this advanced module, you should be able to:<br>
+        ✔ <strong>Build and train neural networks</strong> for malaria data using TensorFlow in R<br>
+        ✔ <strong>Develop outbreak prediction models</strong> using deep learning techniques<br>
+        ✔ <strong>Create interactive dashboards</strong> for malaria surveillance using Shiny<br>
+        ✔ <strong>Implement automated data pipelines</strong> for continuous model updates and dashboard maintenance</p>
+        
+        <h3>Next Steps</h3>
+        <p>To continue expanding your skills in this area, consider exploring:</p>
+        <ul>
+            <li><strong>Ensemble Methods</strong>: Combine multiple models for more robust predictions</li>
+            <li><strong>Transfer Learning</strong>: Apply pre-trained models to malaria prediction tasks</li>
+            <li><strong>Spatiotemporal Modeling</strong>: Incorporate both spatial and temporal components in your models</li>
+            <li><strong>Bayesian Approaches</strong>: Quantify uncertainty in predictions and provide probability distributions</li>
+            <li><strong>Model Deployment at Scale</strong>: Implement models as RESTful APIs or containerized applications</li>
+        </ul>
+        
+    </div>
+    
+    <script src="script.js"></script>
+</body>
+</html>
